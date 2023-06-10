@@ -1,0 +1,49 @@
+pragma ever-solidity >= 0.61.2;
+pragma AbiHeader expire;
+pragma AbiHeader pubkey;
+
+import "tip3/contracts/interfaces/IAcceptTokensTransferCallback.sol";
+import "tip3/contracts/interfaces/ITokenRoot.sol";
+
+contract CuriousDev {
+    uint16  static _nonce; // Some random value to affect on contract address
+    address static _owner; // Tokensale owner. Will receive all transfers
+
+    address public _distributedTokenRoot; // TIP3 TokenRoot address for deploying wallet for Tokensale. This token will be distributed
+    address public _distributedTokenWallet; // TIP3 wallet for Tokensale for sending purchased tokens
+    uint256 public _supply; // How much tokens will be distributed (with decimals)
+
+    constructor(
+        address distributedTokenRoot,
+        uint256 supply,
+        address sendRemainingGasTo
+    ) public {
+        tvm.accept(); // This action is required to process external messages that bring no value - deploy as we have.
+        tvm.rawReserve(1 ever, 0); // we will always reserve 1 venom on this contract
+        _distributedTokenRoot = distributedTokenRoot;
+        _supply = supply;
+
+        // fundamental mechanic of dapps working with tip3 - deploy it's own wallet to operate with. check tip3 specs for more info
+        ITokenRoot(distributedTokenRoot).deployWallet {
+            value: 0.2 ever,
+            flag: 1,
+            callback: CuriousDev.onTokenWallet // this callback will be called by TokenRoot after deploying wallet for tokensale
+        } (
+            address(this),
+            0.1 ever
+        );
+        // sending remaining gas after setups
+        sendRemainingGasTo.transfer({ value: 0, flag: 128, bounce: false });
+    }
+
+        function onTokenWallet(address value) external {
+        require (
+            msg.sender.value != 0 &&
+            msg.sender == _distributedTokenRoot, // check, that calling was from TokenRoot we need
+            101 // some error code for this require
+        );
+        tvm.rawReserve(1 ever, 0);
+        _distributedTokenWallet = value; // store deployed tip3 wallet address
+        _owner.transfer({ value: 0, flag: 128, bounce: false }); // sending remaining gas after setups
+    }
+}
